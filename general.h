@@ -1,10 +1,8 @@
 #include <math.h>
 #include <string.h>
 
-#define VIZ_COLS 60
-#define VIZ_ROWS 60
-// int VIZ_COLS=100;
-// int VIZ_ROWS=60;
+int VIZ_COLS=400;//60
+int VIZ_ROWS=400;//60
 #define _COLS (VIZ_COLS+2)
 #define _ROWS (VIZ_ROWS+2)
 #define h_at(_pt) ((algo_flag==1)?(abs(end.y-(_pt)/_COLS)+abs(end.x-(_pt)%_COLS)):0)
@@ -16,17 +14,22 @@ typedef struct {
 } viz_node;
 
 typedef struct {
+  double red;
+  double green;
+  double blue;
+}colour_codes;
+
+typedef struct {
   int *draw_grid;//[_ROWS][_COLS]
   viz_node strt;
   viz_node end;
   GtkWidget *widget;
 }algo_packet;
 
-typedef struct {
-  double red;
-  double green;
-  double blue;
-}colour_codes;
+typedef struct{
+  int *p;
+  char *config_file;
+}preset_packet;
 
 char DRAW_NONE = 0,
      DRAW_WALL = 1,
@@ -37,7 +40,7 @@ char DRAW_NONE = 0,
      DRAW_VISIT = 32,
      DRAW_PATH = 64;
 
-double maze_speed=1.0, speed=1.0;
+int maze_speed=100, speed=100;
 int sparcity=2, WT_WT=15;
 
 void heap_ify(int heap[], int len, int cost[_ROWS][_COLS], int i, viz_node end, int algo_flag){
@@ -45,8 +48,8 @@ void heap_ify(int heap[], int len, int cost[_ROWS][_COLS], int i, viz_node end, 
     int smallest = i;
     int l = 2*i+1;
     int r = 2*i+2;
-    if (l<len && cost[0][heap[l]]+h_at(heap[l]) < cost[0][heap[smallest]]+h_at(heap[smallest]))smallest = l;
-    else if (l<len && cost[0][heap[l]]+h_at(heap[l]) == cost[0][heap[smallest]]+h_at(heap[smallest]) && h_at(heap[l]) < h_at(heap[smallest]))smallest = l;
+    if (l<len && cost[heap[l]/_COLS][heap[l]%_COLS]+h_at(heap[l]) < cost[0][heap[smallest]]+h_at(heap[smallest]))smallest = l;
+    else if (l<len && cost[heap[l]/_COLS][heap[l]%_COLS]+h_at(heap[l]) == cost[0][heap[smallest]]+h_at(heap[smallest]) && h_at(heap[l]) < h_at(heap[smallest]))smallest = l;
     if (r<len && cost[0][heap[r]]+h_at(heap[r]) < cost[0][heap[smallest]]+h_at(heap[smallest]))smallest = r;
     else if (r<len && cost[0][heap[r]]+h_at(heap[r]) == cost[0][heap[smallest]]+h_at(heap[smallest]) && h_at(heap[r]) < h_at(heap[smallest]))smallest = r;
     if (smallest != i){
@@ -74,11 +77,15 @@ int heap_pop(int heap[], int len, int cost[_ROWS][_COLS], viz_node end, int algo
 
 void dijk_astr_bfs(int draw_grid[_ROWS][_COLS], viz_node strt, viz_node end, GtkWidget *widget,int algo_flag){
   int WT_WALL = -1, WT_NONE = 9999999;
-  int cost[_ROWS][_COLS] = {};
-  int prev[_ROWS][_COLS] = {};
-  int pq[(_ROWS)*(_COLS)] = {};
+  int cost[_ROWS][_COLS];
+  int prev[_ROWS][_COLS];
+  int pq[(_ROWS)*(_COLS)];
 
-  for(int i = 0;i<_ROWS;i++) for(int j = 0;j<_COLS;j++) cost[i][j] = WT_NONE;
+  for(int i = 0;i<_ROWS;i++) for(int j = 0;j<_COLS;j++){
+    cost[i][j] = WT_NONE;
+    prev[i][j] = 0;
+    pq[i*_COLS+j] = 0;
+  }
   cost[strt.y][strt.x] = 0;
 
   int pq_len = 1;

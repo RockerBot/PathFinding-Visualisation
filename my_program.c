@@ -30,8 +30,7 @@ int has_border = 1;
 int btn_pressed = CLICK_UP;
 int simulating = FALSE;
 int BLK_sz = 25;
-int width = 25*VIZ_COLS, height = 25*VIZ_ROWS+tlBrOfst;
-int node_grid[VIZ_ROWS+2][VIZ_COLS+2]={};
+int width = 25*60, height = 25*60+tlBrOfst;
 
 char * config_file="visualizer_config.txt";
 
@@ -40,7 +39,8 @@ static gboolean button_up (GtkWidget *, GdkEventButton *, gpointer);
 static gboolean button_down (GtkWidget *, GdkEventButton *, gpointer);
 static gboolean on_draw_event (GtkWidget *, cairo_t *, gpointer);
 static void draw_grid (cairo_t *);
-static void draw_nodes (cairo_t *);
+static void draw_nodes (cairo_t *, int(*)[_COLS]);
+static void set_grid(gpointer);
 static void set_algo (GtkMenuItem *, gpointer);
 static void toogle_node (GtkToggleToolButton *, gpointer);
 static void *maze_div(void *);
@@ -76,6 +76,7 @@ GtkToolButton *wall_barbtn;
 GtkToolButton *wt_barbtn;
 
 static gboolean mouse_moved(GtkWidget *widget,GdkEvent *event, gpointer user_data) {
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   if (event->type==GDK_MOTION_NOTIFY && !simulating && btn_pressed) {
     GdkEventMotion* e=(GdkEventMotion*)event;
     int x = ((int)e->x)/BLK_sz+1,
@@ -110,6 +111,7 @@ static gboolean button_up(GtkWidget *widget, GdkEventButton *event, gpointer use
   btn_pressed=CLICK_UP;
 }
 static gboolean button_down(GtkWidget *widget, GdkEventButton *event, gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   int x = ((int)event->x)/BLK_sz+1,
       y = ((int)(event->y))/BLK_sz+1;
   btn_pressed=event->button;
@@ -142,6 +144,10 @@ static gboolean button_down(GtkWidget *widget, GdkEventButton *event, gpointer u
 }
 
 static gboolean on_draw_event(GtkWidget *widget, cairo_t *cr, gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
+  
+  // g_print("===> (%d,%d)\n%lu\n",_ROWS,_COLS,sizeof(*node_grid));//////////////////////////////////////////////
+
   GtkWidget *win = gtk_widget_get_toplevel(widget);
   gtk_window_get_size(GTK_WINDOW(win), &width, &height);
   height-=tlBrOfst;
@@ -152,7 +158,7 @@ static gboolean on_draw_event(GtkWidget *widget, cairo_t *cr, gpointer user_data
   COLOUR(cr,NONE_CLR);
   cairo_rectangle(cr,0,0,BLK_sz*VIZ_COLS,BLK_sz*VIZ_ROWS);
   cairo_fill(cr);
-  draw_nodes(cr);
+  draw_nodes(cr, node_grid);
   if(has_border)draw_grid(cr);
   return FALSE;
 }
@@ -168,7 +174,7 @@ static void draw_grid(cairo_t *cr){
   }
   cairo_stroke(cr);
 }
-static void draw_nodes(cairo_t *cr){
+static void draw_nodes(cairo_t *cr, int node_grid[_ROWS][_COLS]){
   for(int i=1;i<=VIZ_ROWS;i++){
     for(int j=1;j<=VIZ_COLS;j++){
       if(node_grid[i][j]==DRAW_NONE)continue;
@@ -194,6 +200,7 @@ static void draw_nodes(cairo_t *cr){
   cairo_stroke(cr);
 }
 static void clear_screen(GtkToolButton* self, gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   int flag=0;
   for(int i=1;i<=VIZ_ROWS;i++){
     for(int j=1;j<=VIZ_COLS;j++){
@@ -228,10 +235,11 @@ static void gen_maze (GtkToolButton *self, gpointer user_data){
   simulating=TRUE;
 
   pthread_t thread_id1;
-  pthread_create(&thread_id1, NULL, maze_div, NULL);
+  pthread_create(&thread_id1, NULL, maze_div, user_data);
   
 }
-static void *maze_div(void *arg){
+static void *maze_div(gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   for(int i=1;i<=VIZ_ROWS;i++){
     for(int j=1;j<=VIZ_COLS;j++){
       if(node_grid[i][j]&DRAW_STRT)node_grid[i][j]=DRAW_STRT;
@@ -243,6 +251,15 @@ static void *maze_div(void *arg){
   node_grid[strt_node.y][strt_node.x]=DRAW_STRT;
   node_grid[end_node.y][end_node.x]=DRAW_END;
   simulating=FALSE;
+}
+
+static void set_grid(gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
+  for(int i=0;i<_ROWS;i++)
+    for(int j=0;j<_COLS;j++)
+      node_grid[i][j] = (i==0||j==0 || i==_ROWS-1||j==_COLS-1)?DRAW_WALL:DRAW_NONE;
+  node_grid[strt_node.y][strt_node.x] = DRAW_STRT;
+  node_grid[end_node.y][end_node.x] = DRAW_END;
 }
 
 static void set_algo(GtkMenuItem* self, gpointer user_data){
@@ -281,25 +298,30 @@ static void toogle_node(GtkToggleToolButton* self, gpointer user_data){
   
 }
 
-static void *run_astr(void *arg){
+static void *run_astr(gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   dijk_astr_bfs(node_grid, strt_node, end_node, window,1);
   simulating = FALSE;
 }
-static void *run_dijk(void *arg){
+static void *run_dijk(gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   dijk_astr_bfs(node_grid, strt_node, end_node, window,0);
   simulating = FALSE;
 }
-static void *run_bfs(void *arg){
+static void *run_bfs(gpointer user_data){
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   dijk_astr_bfs(node_grid, strt_node, end_node, window,2);
   simulating = FALSE;
 }
-static void *run_dfs(void *arg){ // TODO VIBHA or KRISHNA
+static void *run_dfs(gpointer user_data){ // TODO
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   // dfs(node_grid, strt_node, end_node, window);
   simulating = FALSE;
 }
 static void run_sim(GtkToolButton* self, gpointer user_data){
   if(simulating)return;
   simulating=TRUE;
+  int (*node_grid)[_COLS] = (int (*)[_COLS])(((preset_packet *)user_data)->p);
   for(int i=0;i<VIZ_ROWS+2;i++)node_grid[i][0] = node_grid[i][VIZ_COLS+1] = DRAW_WALL;
   for(int i=0;i<VIZ_COLS+2;i++)node_grid[0][i] = node_grid[VIZ_ROWS+1][i] = DRAW_WALL;
   // algo_packet info = {node_grid, strt_node, end_node, window};
@@ -314,17 +336,18 @@ static void run_sim(GtkToolButton* self, gpointer user_data){
   }
   pthread_t thread_id1;
   switch(algo_flag){
-    case 1: pthread_create(&thread_id1, NULL, run_astr, NULL); break;
-    case 2: pthread_create(&thread_id1, NULL, run_dijk, NULL); break;
-    case 4: pthread_create(&thread_id1, NULL, run_bfs, NULL); break;
-    case 8: pthread_create(&thread_id1, NULL, run_dfs, NULL); break;
+    case 1: pthread_create(&thread_id1, NULL, run_astr, user_data); break;
+    case 2: pthread_create(&thread_id1, NULL, run_dijk, user_data); break;
+    case 4: pthread_create(&thread_id1, NULL, run_bfs, user_data); break;
+    case 8: pthread_create(&thread_id1, NULL, run_dfs, user_data); break;
   }
 }
 
 static void load_presets(GtkToolButton* self, gpointer user_data){
-  FILE *fp=fopen((char *)user_data,"r");
+  // if(simulating)return;
+  FILE *fp=fopen(((preset_packet *)user_data)->config_file,"r");
   if(fp==NULL){
-    if((fp=fopen((char *)user_data,"w"))!=NULL){
+    if((fp=fopen(((preset_packet *)user_data)->config_file,"w"))!=NULL){
       fprintf(fp,"%s","border:28,28,28\n");
       fprintf(fp,"%s","none:255,255,255\n");
       fprintf(fp,"%s","wall:0,0,38\n");
@@ -339,6 +362,8 @@ static void load_presets(GtkToolButton* self, gpointer user_data){
       fprintf(fp,"%s","speed:100\n");
       fprintf(fp,"%s","wt_val:15\n");
       fprintf(fp,"%s","sparcity:2\n");
+      fprintf(fp,"%s","size:60,60\n");
+      fprintf(fp,"%s","//the max size is 900,900\n");
       fprintf(fp,"%s","//#<filename.fileextension>\n");
       fclose(fp);
     }
@@ -350,7 +375,10 @@ static void load_presets(GtkToolButton* self, gpointer user_data){
     key=strtok(line,":");
     if(key[0]=='#'){
       key=strtok(key,"\n");
-      load_presets(self,&key[1]);
+      char *temp = ((preset_packet *)user_data)->config_file;
+      ((preset_packet *)user_data)->config_file = &key[1];
+      load_presets(self,user_data);
+      ((preset_packet *)user_data)->config_file = temp;
       continue;
     }else if(key[0]=='/' && key[1]=='/' || key[0]=='\n')continue;
     if((val=strtok(NULL, ","))!=NULL)r=atoi(val)/255.0;
@@ -371,19 +399,33 @@ static void load_presets(GtkToolButton* self, gpointer user_data){
     else if(!strcmp(key,"has_border")) has_border = (int)(r*255);
     else if(!strcmp(key,"wt_val"))     WT_WT      = (int)(((r*255)>0)?r*255:15);
     else if(!strcmp(key,"sparcity"))   sparcity   = (int)((2<=(r*255))?r*255:2);
+    else if(!strcmp(key,"size")){
+      if(simulating)continue;
+      VIZ_ROWS = (int)(r*255);
+      VIZ_COLS  = (int)(g*255);
+      VIZ_COLS = (900>VIZ_COLS)?VIZ_COLS:900;
+      VIZ_ROWS = (900>VIZ_ROWS)?VIZ_ROWS:900;
+      free(((preset_packet *)user_data)->p);
+      ((preset_packet *)user_data)->p = malloc(sizeof(int)*_COLS*_ROWS);
+      set_grid(user_data);
+    }
+    else if(!strcmp(key,"grid")){
+      if(simulating)continue;
+
+    }
   }
   gtk_widget_queue_draw(window);
   fclose(fp);
 }
 
 int main(int argc, char *argv[]){
+  preset_packet presets;
+  presets.config_file=config_file;
+  presets.p=malloc(sizeof(int)*_COLS*_ROWS);
 
   gtk_init(&argc, &argv);
 
-  for(int i=0;i<VIZ_ROWS+2;i++)node_grid[i][0] = node_grid[i][VIZ_COLS+1] = DRAW_WALL;
-  for(int i=0;i<VIZ_COLS+2;i++)node_grid[0][i] = node_grid[VIZ_ROWS+1][i] = DRAW_WALL;
-  node_grid[strt_node.y][strt_node.x] = DRAW_STRT;
-  node_grid[end_node.y][end_node.x] = DRAW_END;
+  set_grid(&presets);
   srand(time(0));
 
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -450,9 +492,9 @@ int main(int argc, char *argv[]){
   gtk_box_pack_start(GTK_BOX(box1),tl_bar,FALSE, FALSE,0);
   gtk_box_pack_start(GTK_BOX(box1),darea,TRUE, TRUE,0);
 
-  g_signal_connect(G_OBJECT(darea), "draw", G_CALLBACK(on_draw_event), NULL);
-  g_signal_connect(G_OBJECT(darea),"motion-notify-event",G_CALLBACK(mouse_moved), NULL);
-  g_signal_connect(window, "button-press-event", G_CALLBACK(button_down), NULL);
+  g_signal_connect(G_OBJECT(darea), "draw", G_CALLBACK(on_draw_event), &presets);
+  g_signal_connect(G_OBJECT(darea),"motion-notify-event",G_CALLBACK(mouse_moved), &presets);
+  g_signal_connect(window, "button-press-event", G_CALLBACK(button_down), &presets);
   g_signal_connect(window, "button-release-event", G_CALLBACK(button_up), NULL);
   g_signal_connect(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
   g_signal_connect(G_OBJECT(aStr_mnu_itm), "activate",G_CALLBACK(set_algo), &ALGOS_AStr);
@@ -464,12 +506,13 @@ int main(int argc, char *argv[]){
   g_signal_connect(G_OBJECT(strt_nd_barbtn), "toggled",G_CALLBACK(toogle_node), &NODE_STR_ND);
   g_signal_connect(G_OBJECT(wall_barbtn), "toggled",G_CALLBACK(toogle_node), &NODE_WALL);
   g_signal_connect(G_OBJECT(wt_barbtn), "toggled",G_CALLBACK(toogle_node), &NODE_WT);
-  g_signal_connect(G_OBJECT(sim_barbtn), "clicked", G_CALLBACK(run_sim), NULL);
-  g_signal_connect(G_OBJECT(clear_barbtn), "clicked", G_CALLBACK(clear_screen), NULL);
-  g_signal_connect(G_OBJECT(gen_mz_barbtn), "clicked", G_CALLBACK(gen_maze), NULL);
-  g_signal_connect(G_OBJECT(preset_barbtn), "clicked", G_CALLBACK(load_presets), config_file);
+  g_signal_connect(G_OBJECT(sim_barbtn), "clicked", G_CALLBACK(run_sim), &presets);
+  g_signal_connect(G_OBJECT(clear_barbtn), "clicked", G_CALLBACK(clear_screen), &presets);
+  g_signal_connect(G_OBJECT(gen_mz_barbtn), "clicked", G_CALLBACK(gen_maze), &presets);
+  g_signal_connect(G_OBJECT(preset_barbtn), "clicked", G_CALLBACK(load_presets), &presets);
 
-  load_presets(NULL,config_file);
+  load_presets(NULL,&presets);
+  set_grid(&presets);
 
   gtk_widget_set_events(darea, GDK_POINTER_MOTION_MASK|GDK_BUTTON_PRESS_MASK|GDK_BUTTON_RELEASE_MASK);
 
